@@ -30,7 +30,7 @@ final class SurfaceEntity(context: EventSourcedEntityContext, vocabulary: Vocabu
     else
       vocabulary.refuse(move) match
         case Some(word) => effects.error(s"the vocabulary has no $word", ErrorCode.BadRequest)
-        case None       => effects.persistAll(SurfaceEntity.eventsOf(move)).thenReplyState
+        case None       => effects.persist(SurfaceEvent.Moved(move)).thenReplyState
 
   def show(show: Show): Effect[Surface] =
     if !currentState.opened then effects.error("surface is not opened", ErrorCode.Conflict)
@@ -60,19 +60,6 @@ final class SurfaceEntity(context: EventSourcedEntityContext, vocabulary: Vocabu
   def get: ReadOnlyEffect[Surface] =
     if !currentState.opened then effects.error("surface is not opened", ErrorCode.NotFound)
     else effects.reply(currentState)
-
-object SurfaceEntity:
-  /** The events one move is, in the order the contract gives. */
-  def eventsOf(move: Move): Seq[SurfaceEvent] =
-    val at = move.at
-    move.shape.map(SurfaceEvent.ShapeChanged(_, at)).toSeq ++
-      (if move.clearAnchor then Seq(SurfaceEvent.AnchorChanged(None, at))
-       else move.anchor.map(a => SurfaceEvent.AnchorChanged(Some(a), at)).toSeq) ++
-      move.clearModifiers.map(SurfaceEvent.ModifierCleared(_, at)) ++
-      move.modifiers.toSeq.sortBy(_._1).map((k, v) => SurfaceEvent.ModifierSet(k, v, at)) ++
-      (if move.clearPending then Seq(SurfaceEvent.PendingCleared(at))
-       else move.pending.map(SurfaceEvent.PendingSet(_, at)).toSeq) ++
-      move.request.map(SurfaceEvent.Requested(_, at)).toSeq
 
 /**
  * What a consumer extends to register surfaces: `object Surfaces extends

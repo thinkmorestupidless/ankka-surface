@@ -80,7 +80,13 @@ just hooks               # the commit hooks, once per clone
 ```
 
 Built against ankka `0.16.3` (`V.ankka` in `project/Dependencies.scala`); `sbt -Dankka.version=<v>`
-builds against another.
+builds against another. Until there is a release, a consumer on this machine takes it from
+`~/.ivy2/local` at a version it can name:
+
+```bash
+sbt 'set ThisBuild / version := "0.1.0-SNAPSHOT"' publishLocal
+cd device && npm run build       # a `file:` dependency reads dist/
+```
 
 ## Where things are
 

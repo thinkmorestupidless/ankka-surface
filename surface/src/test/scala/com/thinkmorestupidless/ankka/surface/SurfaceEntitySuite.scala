@@ -33,7 +33,7 @@ class SurfaceEntitySuite extends munit.FunSuite:
     assertEquals(other.allEvents, Vector.empty)
   }
 
-  test("a move changes several parts at once and the version rises once per part") {
+  test("a move changes several parts at once and raises the version by one") {
     val kit = opened()
     val result = kit.call(Surfaces.move)(
       Move(
@@ -47,8 +47,8 @@ class SurfaceEntitySuite extends munit.FunSuite:
     assertEquals(s.shape, "shelf")
     assertEquals(s.anchor, Some(Anchor("theme", "newcastle")))
     assertEquals(s.modifiers, Map("time" -> "this weekend"))
-    assertEquals(result.events.size, 3)
-    assertEquals(s.version, 4L)
+    assertEquals(result.events.size, 1)
+    assertEquals(s.version, 2L)
   }
 
   test("a move naming a shape the vocabulary lacks is refused whole and changes nothing") {

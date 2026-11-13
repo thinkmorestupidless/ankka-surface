@@ -41,21 +41,33 @@ final case class Surface(
   def applyEvent(event: SurfaceEvent, railLength: Int): Surface = event match
     case SurfaceEvent.Opened(owner, shape, _) =>
       copy(owner = owner, opened = true, shape = shape).next
-    case SurfaceEvent.ShapeChanged(shape, _)   => copy(shape = shape).next
-    case SurfaceEvent.AnchorChanged(anchor, _) => copy(anchor = anchor).next
-    case SurfaceEvent.ModifierSet(key, value, _) =>
-      copy(modifiers = modifiers.updated(key, value)).next
-    case SurfaceEvent.ModifierCleared(key, _) => copy(modifiers = modifiers - key).next
-    case SurfaceEvent.PendingSet(pending, _)  => copy(pending = Some(pending)).next
-    case SurfaceEvent.PendingCleared(_)       => copy(pending = None).next
-    case SurfaceEvent.Requested(text, at) =>
-      copy(rail = (RailEntry(text, shape, anchor, modifiers, at) :: rail).take(railLength)).next
+    case SurfaceEvent.Moved(move) => applyMove(move, railLength).next
     case SurfaceEvent.ShowingStarted(showing) =>
       copy(showing = showing :: this.showing.filterNot(_.device == showing.device)).next
     case SurfaceEvent.ShowingStopped(device, _) =>
       copy(showing = showing.filterNot(_.device == device)).next
     // The entity is deleted straight after; the event is there for what reads the journal.
     case SurfaceEvent.Closed(_) => this
+
+  /**
+   * The fold of one move, in the contract's order: the shape, the anchor (`clearAnchor` wins), the
+   * modifiers cleared then set, the pending (`clearPending` wins), then the request put on the rail
+   * with the surface it left. The device package applies the same fold. The version is the event's.
+   */
+  def applyMove(move: Move, railLength: Int): Surface =
+    val shaped = move.shape.fold(this)(s => copy(shape = s))
+    val anchored =
+      if move.clearAnchor then shaped.copy(anchor = None)
+      else move.anchor.fold(shaped)(a => shaped.copy(anchor = Some(a)))
+    val modified =
+      anchored.copy(modifiers = (anchored.modifiers -- move.clearModifiers) ++ move.modifiers)
+    val pended =
+      if move.clearPending then modified.copy(pending = None)
+      else move.pending.fold(modified)(p => modified.copy(pending = Some(p)))
+    move.request.fold(pended) { text =>
+      val entry = RailEntry(text, pended.shape, pended.anchor, pended.modifiers, move.at)
+      pended.copy(rail = (entry :: pended.rail).take(railLength))
+    }
 
 object Surface:
   def empty(id: String): Surface =
@@ -64,13 +76,11 @@ object Surface:
 /** What happened to a surface. A closed set, each case carrying the time the command gave it. */
 enum SurfaceEvent:
   case Opened(owner: String, shape: String, at: Instant)
-  case ShapeChanged(shape: String, at: Instant)
-  case AnchorChanged(anchor: Option[Anchor], at: Instant)
-  case ModifierSet(key: String, value: String, at: Instant)
-  case ModifierCleared(key: String, at: Instant)
-  case PendingSet(pending: Pending, at: Instant)
-  case PendingCleared(at: Instant)
-  case Requested(text: String, at: Instant)
+
+  /**
+   * One move, whole: the journal holds what was asked, and a device streams one row per request.
+   */
+  case Moved(move: Move)
   case ShowingStarted(showing: Showing)
   case ShowingStopped(device: String, at: Instant)
   case Closed(at: Instant)

@@ -26,9 +26,9 @@ names them and adds the requirements they do not state.
 ## Requirements
 
 - **R1** A surface is an event sourced entity whose state is `Surface` as `contracts/surface-http.md`
-  gives it, and whose events are a closed set: opened, shape changed, anchor changed, modifier set,
-  modifier cleared, pending set, pending cleared, requested, showing started, showing stopped,
-  closed. Each event carries the time the command gave it; the fold reads no clock.
+  gives it, and whose events are a closed set: opened, moved (one event for a whole move, so the
+  journal holds what was asked and a device streams one row per request), showing started, showing
+  stopped, closed. Each event carries the time the command gave it; the fold reads no clock.
 - **R2** The consumer declares a `Vocabulary`: shapes, anchor kinds, modifier keys, pending kinds,
   device classes, the home shape and the rail's length. The entity refuses, before persisting, any
   part of a move the vocabulary lacks, as a bad request naming the word.

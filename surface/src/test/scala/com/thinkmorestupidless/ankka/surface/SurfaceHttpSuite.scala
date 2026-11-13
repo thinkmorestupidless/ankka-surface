@@ -211,11 +211,11 @@ class SurfaceHttpSuite extends munit.FunSuite with LogCapturing:
     val (name, moved) = stream.next()
     assertEquals(name, "row")
     assert(moved.contains("\"shape\":\"shelf\""), moved)
-    assert(moved.contains("\"version\":3"), moved)
+    assert(moved.contains("\"version\":2"), moved)
     assertEquals(send("DELETE", "/surfaces/http-stream")._1, 204)
     // A watch may give the same version twice; nothing older, and then the removal.
     val untilRemoved = Iterator.continually(stream.next()).takeWhile(_._1 != "removed").toList
-    assert(untilRemoved.forall((n, d) => n == "row" && d.contains("\"version\":3")), untilRemoved)
+    assert(untilRemoved.forall((n, d) => n == "row" && d.contains("\"version\":2")), untilRemoved)
     stream.close()
     assertEquals(send("GET", "/surfaces/http-stream")._1, 404)
     assertEquals(DeviceStream("http-stream").status, 404)
