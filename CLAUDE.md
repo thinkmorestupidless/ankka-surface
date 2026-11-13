@@ -41,3 +41,6 @@ spec work, `feat(001): ...`. Pull request bodies follow `.github/pull_request_te
   blank line. (2026-11-13)
 - Node runs a `.ts` test directly only when `src` files import each other with `.ts` specifiers;
   `tsc` rewrites them to `.js` on emit (`rewriteRelativeImportExtensions`). (2026-11-13)
+- A browser's `fetch` must be called on the window: holding `globalThis.fetch` in a field and calling
+  it throws "Illegal invocation" in Chrome, and Node's tests never see it because Node's fetch does
+  not care. The model wraps it in a closure. (2026-11-13)

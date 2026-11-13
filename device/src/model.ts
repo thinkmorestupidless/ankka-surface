@@ -71,7 +71,8 @@ export class SurfaceModel {
     this.#deviceClass = options.deviceClass;
     this.#room = options.room ?? false;
     this.#railLength = options.railLength ?? 3;
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    // A browser's fetch must be called on the window: a detached reference throws "Illegal invocation".
+    this.#fetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.#EventSource = options.EventSource ?? globalThis.EventSource;
     this.#reconnectDelayMs = options.reconnectDelayMs ?? 1000;
     this.#now = options.now ?? (() => new Date().toISOString());
