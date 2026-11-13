@@ -5,6 +5,7 @@ Feature: A surface is held on the server and steered from any device
   Background:
     Given a vocabulary with the shapes "home, shelf, item" and the home shape "home"
     And the vocabulary names the anchor kinds "theme, market", the modifier keys "time" and the pending kinds "forecast"
+    And the vocabulary names the focus keys "card, outcome"
 
   Scenario: Opening a surface gives it an owner and the home shape
     When a surface "s-1" is opened for "trevor"
@@ -79,3 +80,24 @@ Feature: A surface is held on the server and steered from any device
     When "s-1" is closed
     Then reading "s-1" is not found
     And a device streaming "s-1" is told it was removed
+
+  Scenario: The words of one utterance share one rail entry
+    Given a surface "s-1" opened for "trevor"
+    When "newcastle" is said on "s-1" from the utterance "u-1"
+    And "newcastle please" is said on "s-1" from the utterance "u-1"
+    And "newcastle again" is said on "s-1" from the utterance "u-2"
+    Then the rail of "s-1" reads, newest first, "newcastle again" and "newcastle please"
+
+  Scenario: Words are heard without anything being kept
+    Given a surface "s-1" opened for "trevor"
+    When "newcastle" is heard on "s-1"
+    Then the answer is understood with a move to the anchor "theme:newcastle", and the surface "s-1" is at version 1
+
+  Scenario: The focus beside a surface is the latest value and is streamed
+    Given a surface "s-1" opened for "trevor"
+    And a device streaming the focus of "s-1"
+    When the device "phone-1" sets the focus of "s-1" to "card=m1"
+    Then the focus of "s-1" is "card=m1" from "phone-1" at version 1
+    And the device streaming the focus is given "card=m1"
+    When the device "phone-1" sets the focus of "s-1" to "colour=red"
+    Then the focus is refused as a bad request naming "colour"

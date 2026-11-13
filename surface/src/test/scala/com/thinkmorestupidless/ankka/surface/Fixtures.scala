@@ -11,14 +11,17 @@ object Fixtures:
     homeShape = "home",
     anchorKinds = Set("theme", "market"),
     modifierKeys = Set("time"),
-    pendingKinds = Set("forecast")
+    pendingKinds = Set("forecast"),
+    focusKeys = Set("card", "outcome")
   )
 
   val t0: Instant              = Instant.parse("2026-11-13T09:00:00Z")
   def t(seconds: Int): Instant = t0.plusSeconds(seconds.toLong)
 
-  object Surfaces extends SurfaceCompanion(ComponentId("surface"), vocabulary)
-  object Rows     extends SurfaceRowsCompanion(ComponentId("surface-rows"), Surfaces)
+  object Surfaces  extends SurfaceCompanion(ComponentId("surface"), vocabulary)
+  object Rows      extends SurfaceRowsCompanion(ComponentId("surface-rows"), Surfaces)
+  object Focuses   extends SurfaceFocusCompanion(ComponentId("surface-focus"), vocabulary)
+  object FocusRows extends SurfaceFocusRowsCompanion(ComponentId("surface-focus-rows"), Focuses)
 
   /** A rail of two, for the scenario that trims it. */
   object ShortRail

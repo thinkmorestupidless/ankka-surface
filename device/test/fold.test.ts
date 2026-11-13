@@ -36,6 +36,7 @@ test("applyMove applies every part in the contract's order and puts the request 
       anchor: { kind: "market", id: "m1" },
       modifiers: { order: "newest", time: "week", colour: "red" },
       at,
+      utterance: null,
     },
   ]);
   assert.equal(after.version, 7, "version belongs to the server");
@@ -70,4 +71,16 @@ test("applyMove does not mutate its input", () => {
 test("applyMove throws on a move that names nothing", () => {
   assert.throws(() => applyMove(surface(), {}, at), Error);
   assert.throws(() => applyMove(surface(), { modifiers: {}, clearModifiers: [], clearAnchor: false, clearPending: false }, at), Error);
+});
+
+test("the moves of one utterance share one rail entry; a new utterance or none pushes", () => {
+  const one = applyMove(surface(), { shape: "shelf", request: "new", utterance: "u-1" }, at);
+  const two = applyMove(one, { shape: "shelf", request: "newcastle", utterance: "u-1" }, at);
+  assert.deepEqual(two.rail.map((e) => e.text), ["newcastle"]);
+  assert.equal(two.rail[0]?.utterance, "u-1");
+  const three = applyMove(two, { shape: "item", request: "why", utterance: "u-2" }, at);
+  assert.deepEqual(three.rail.map((e) => e.text), ["why", "newcastle"]);
+  const four = applyMove(three, { shape: "item", request: "typed" }, at);
+  assert.deepEqual(four.rail.map((e) => e.text), ["typed", "why", "newcastle"]);
+  assert.equal(four.rail[0]?.utterance, null);
 });

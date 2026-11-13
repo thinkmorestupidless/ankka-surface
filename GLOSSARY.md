@@ -15,11 +15,17 @@ The words the features, the spec and the code use for one thing each.
   shows it; committing it is the consumer's own route, never the surface's.
 - **Move**: one change to the surface, with as many parts as it names, applied together.
 - **Request**: the words a person said or typed that led to a move; kept on the rail.
+- **Utterance**: one stretch of speech, named by the device that hears it, so the moves made from
+  its partial words share one rail entry.
+- **Hear**: to ask the interpreter what it would make of words, with nothing persisted.
+- **Focus**: where the attention is, beside the surface and apart from it: the card under a thumb,
+  the outcome a finger rests on. The latest value only; its keys are the vocabulary's focus keys.
 - **Rail**: the last few requests, newest first, each with the surface it left; the way back.
 - **Interpreter**: the consumer's function from the surface and a request's text to a move, or to
   a reason it could not make one.
 - **Vocabulary**: what a consumer declares a surface may hold: the shapes, the anchor kinds, the
-  modifier keys, the pending kinds, the device classes, the home shape and the rail's length.
+  modifier keys, the pending kinds, the device classes, the home shape, the rail's length and the
+  focus keys.
 - **Device**: anything rendering a surface, named by an id of its own and a device class.
 - **Device class**: how a device renders: phone, laptop, tv, or whatever the vocabulary names.
 - **Showing**: a device's record on the surface, with its class and whether it is in a room.

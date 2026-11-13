@@ -25,12 +25,20 @@ final case class MoveBody(
   def toMove(at: java.time.Instant): Move =
     Move(shape, anchor, clearAnchor, modifiers, clearModifiers, pending, clearPending, request, at)
 
-final case class SayBody(text: String)
+/**
+ * Words said or typed; `utterance` names the utterance they belong to while it is still being
+ * heard.
+ */
+final case class SayBody(text: String, utterance: Option[String] = None)
+final case class SetFocusBody(device: String, fields: Map[String, String])
 final case class ShowBody(device: String, deviceClass: String, room: Boolean = false)
 final case class HideBody(device: String)
 
 /** What `/say` answers: whether the words were understood, why not, and the surface now. */
 final case class Said(understood: Boolean, reason: Option[String], surface: Surface)
+
+/** What `/hear` answers: the interpreter's move for the words, with nothing persisted. */
+final case class Heard(understood: Boolean, reason: Option[String], move: Option[Move])
 
 /**
  * The surface over HTTP, as `specs/001-surface/contracts/surface-http.md` gives it, under the
@@ -45,7 +53,8 @@ final class SurfaceEndpoint(
     surfaces: SurfaceCompanion,
     rows: SurfaceRowsCompanion,
     interpreter: Interpreter,
-    clock: Clock = Clock.systemUTC()
+    clock: Clock = Clock.systemUTC(),
+    focus: Option[FocusLane] = None
 ) extends HttpEndpoint(prefix):
 
   private given JsonValueCodec[Surface]         = Codecs.make[Surface]
@@ -56,6 +65,9 @@ final class SurfaceEndpoint(
   private given JsonValueCodec[ShowBody]        = Codecs.make[ShowBody]
   private given JsonValueCodec[HideBody]        = Codecs.make[HideBody]
   private given JsonValueCodec[Said]            = Codecs.make[Said]
+  private given JsonValueCodec[Heard]           = Codecs.make[Heard]
+  private given JsonValueCodec[Focus]           = Codecs.make[Focus]
+  private given JsonValueCodec[SetFocusBody]    = Codecs.make[SetFocusBody]
 
   private def surface(id: String) = client.forEventSourcedEntity(EntityId(id))
   private def now                 = clock.instant()
@@ -89,10 +101,40 @@ final class SurfaceEndpoint(
     val before = surface(id).call(surfaces.get).invoke()
     interpreter.interpret(before, body.text) match
       case Interpretation.Understood(move) =>
-        val after = surface(id).call(surfaces.move).invoke(move.withRequest(body.text).at(now))
+        val whole = move.withRequest(body.text).at(now).fromUtterance(body.utterance)
+        val after = surface(id).call(surfaces.move).invoke(whole)
         Said(understood = true, None, after)
       case Interpretation.NotUnderstood(reason) =>
         Said(understood = false, Some(reason), before)
+  }
+
+  // The interpreter alone, nothing persisted: a device tries words it is not sure of, or a partial.
+  postBody("/{id}/hear") { (id: String, body: SayBody) =>
+    if body.text.isBlank then throw HttpProblem.badRequest("nothing was said")
+    val before = surface(id).call(surfaces.get).invoke()
+    interpreter.interpret(before, body.text) match
+      case Interpretation.Understood(move)      => Heard(understood = true, None, Some(move))
+      case Interpretation.NotUnderstood(reason) => Heard(understood = false, Some(reason), None)
+  }
+
+  // The focus lane, when the consumer registered one: the latest value beside the surface.
+  focus.foreach { lane =>
+    def focusOf(id: String) = client.forKeyValueEntity(EntityId(id))
+
+    get("/{id}/focus") { (id: String) =>
+      val _ = surface(id).call(surfaces.get).invoke()
+      focusOf(id).call(lane.focuses.get).invoke()
+    }
+
+    putBody("/{id}/focus") { (id: String, body: SetFocusBody) =>
+      val _ = surface(id).call(surfaces.get).invoke()
+      focusOf(id).call(lane.focuses.set).invoke(SetFocus(body.device, body.fields, now))
+    }
+
+    sseEvents("/{id}/focus/stream") { (id: String) =>
+      val _ = surface(id).call(surfaces.get).invoke()
+      views.forView(lane.rows).watchRow(id).asSse
+    }
   }
 
   postBody("/{id}/show") { (id: String, body: ShowBody) =>

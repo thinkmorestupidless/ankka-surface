@@ -24,8 +24,11 @@ export function applyMove(surface: Surface, move: Move, at: string, railLength =
 
   let rail = surface.rail;
   if (move.request !== undefined) {
-    const entry: RailEntry = { text: move.request, shape, anchor, modifiers: { ...modifiers }, at };
-    rail = [entry, ...surface.rail].slice(0, railLength);
+    const entry: RailEntry = { text: move.request, shape, anchor, modifiers: { ...modifiers }, at, utterance: move.utterance ?? null };
+    // A later move of the same utterance replaces the entry the earlier one made.
+    const head = surface.rail[0];
+    const rest = move.utterance !== undefined && head !== undefined && head.utterance === move.utterance ? surface.rail.slice(1) : surface.rail;
+    rail = [entry, ...rest].slice(0, railLength);
   }
 
   return { ...surface, shape, anchor, modifiers, pending, rail };

@@ -11,7 +11,8 @@ final case class Vocabulary(
     modifierKeys: Set[String] = Set.empty,
     pendingKinds: Set[String] = Set.empty,
     deviceClasses: Set[String] = Set("phone", "laptop", "tv"),
-    railLength: Int = 3
+    railLength: Int = 3,
+    focusKeys: Set[String] = Set.empty
 ):
   require(shapes.contains(homeShape), s"the home shape '$homeShape' is not one of the shapes")
   require(railLength >= 0, "the rail's length is not negative")
@@ -24,3 +25,7 @@ final case class Vocabulary(
         .find(!modifierKeys(_))
         .map(k => s"modifier key '$k'") orElse
       move.pending.map(_.kind).filterNot(pendingKinds).map(k => s"pending kind '$k'")
+
+  /** The first focus key this vocabulary lacks. */
+  def refuseFocus(fields: Map[String, String]): Option[String] =
+    fields.keys.find(!focusKeys(_)).map(k => s"focus key '$k'")

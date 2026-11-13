@@ -2,9 +2,10 @@
 
 ankka-surface: a surface, the representation of what a person last asked for, as a library on
 ankka's published SDK (`surface/`, Scala) with a device package beside it (`device/`, TypeScript).
-The contract both halves build against is `specs/001-surface/contracts/surface-http.md`; the
-living scenarios are `features/surface/surface.feature`, in the words of `GLOSSARY.md`; the
-decisions are `docs/decisions.md`. Read the family's `../ankka-brain/conventions.md` before
+The contract both halves build against is `specs/001-surface/contracts/surface-http.md` (spec 002
+extended it with hearing and the focus lane); the living scenarios are
+`features/surface/surface.feature`, in the words of `GLOSSARY.md`; the decisions are
+`docs/decisions.md`. Read the family's `../ankka-brain/conventions.md` before
 writing code, and ankka's own docs (`../ankka/docs/`, or the `ankka` skills) for the SDK: the
 samples there are compiled and tested against the version in `project/Dependencies.scala`.
 
@@ -12,6 +13,8 @@ samples there are compiled and tested against the version in `project/Dependenci
 
 - **Nothing here names a product.** Shapes, anchor kinds, modifier keys and pending kinds are the
   consumer's vocabulary. A word of any product's in this repository is a defect.
+- **Focus is not the surface.** What was asked for is journaled and versioned; where the attention
+  is now is a key value entity beside it, the latest value only. A finger never writes the journal.
 - **The surface never acts.** A move changes what is shown; an act a person begins is `pending`
   until the consumer's own route commits it. The interpreter is a seam, and the library ships none.
 - **The fold is the contract.** The entity, the view and the device apply a move the same way, in

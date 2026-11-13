@@ -26,6 +26,8 @@ class SurfaceHttpSuite extends munit.FunSuite with LogCapturing:
   private given JsonValueCodec[Surface]         = Codecs.make[Surface]
   private given JsonValueCodec[Vector[Surface]] = Codecs.make[Vector[Surface]]
   private given JsonValueCodec[Said]            = Codecs.make[Said]
+  private given JsonValueCodec[Heard]           = Codecs.make[Heard]
+  private given JsonValueCodec[Focus]           = Codecs.make[Focus]
 
   private var testKit: AnkkaTestKit = null
   private var server: HttpServer    = null
@@ -49,14 +51,15 @@ class SurfaceHttpSuite extends munit.FunSuite with LogCapturing:
         Surfaces,
         Rows,
         interpreter,
-        ticking
+        ticking,
+        focus = Some(FocusLane(Focuses, FocusRows))
       )
     )
 
   override def beforeAll(): Unit =
     server = endpoint(NewcastleInterpreter)
     testKit = AnkkaTestKit.start(
-      Seq(Surfaces.descriptor, Rows.descriptor),
+      Seq(Surfaces.descriptor, Rows.descriptor, Focuses.descriptor, FocusRows.descriptor),
       Seq(server, ProjectionRuntime())
     )
     baseUrl = s"http://127.0.0.1:${server.boundPort.getOrElse(fail("server did not bind"))}"
@@ -88,10 +91,10 @@ class SurfaceHttpSuite extends munit.FunSuite with LogCapturing:
     readFromString[Surface](body)
 
   /** A device's stream: the named events as they arrive, read on a thread of its own. */
-  private final class DeviceStream(id: String):
+  private final class DeviceStream(id: String, suffix: String = "/stream"):
     val events = LinkedBlockingQueue[(String, String)]()
     private val response = http.send(
-      JdkRequest.newBuilder(URI.create(s"$baseUrl/surfaces/$id/stream")).GET().build(),
+      JdkRequest.newBuilder(URI.create(s"$baseUrl/surfaces/$id$suffix")).GET().build(),
       JdkResponse.BodyHandlers.ofInputStream()
     )
     val status: Int    = response.statusCode()
@@ -251,4 +254,70 @@ class SurfaceHttpSuite extends munit.FunSuite with LogCapturing:
     assertEquals(after.rail.map(_.text), List("two", "one"))
     // The server bound again, perhaps elsewhere.
     baseUrl = s"http://127.0.0.1:${server.boundPort.getOrElse(fail("server did not bind"))}"
+  }
+
+  test("hear answers the interpreter's move and persists nothing") {
+    val s              = open("http-hear")
+    val (status, body) = send("POST", "/surfaces/http-hear/hear", Some("""{"text":"newcastle"}"""))
+    assertEquals(status, 200, body)
+    val heard = readFromString[Heard](body)
+    assert(heard.understood)
+    assertEquals(heard.move.flatMap(_.anchor), Some(Anchor("theme", "newcastle")))
+    assertEquals(read("http-hear").version, s.version)
+    val (_, no)  = send("POST", "/surfaces/http-hear/hear", Some("""{"text":"sandwich"}"""))
+    val notHeard = readFromString[Heard](no)
+    assert(!notHeard.understood)
+    assertEquals(notHeard.move, None)
+    assertEquals(send("POST", "/surfaces/http-hear/hear", Some("""{"text":" "}"""))._1, 400)
+  }
+
+  test("what is said while one utterance is heard shares one rail entry") {
+    val _ = open("http-utterance")
+    def say(text: String, utterance: String) =
+      val (status, body) = send(
+        "POST",
+        "/surfaces/http-utterance/say",
+        Some(s"""{"text":"$text","utterance":"$utterance"}""")
+      )
+      assertEquals(status, 200, body)
+      readFromString[Said](body).surface
+    say("newcastle", "u-1"): Unit
+    val after = say("newcastle please", "u-1")
+    assertEquals(after.rail.map(_.text), List("newcastle please"))
+    assertEquals(
+      say("newcastle again", "u-2").rail.map(_.text),
+      List("newcastle again", "newcastle please")
+    )
+  }
+
+  test(
+    "the focus beside a surface is set, read and streamed, and refused for a surface nobody opened"
+  ) {
+    val _ = open("http-focus")
+    assertEquals(send("GET", "/surfaces/nobody/focus")._1, 404)
+    val (empty, emptyBody) = send("GET", "/surfaces/http-focus/focus")
+    assertEquals(empty, 200, emptyBody)
+    assertEquals(readFromString[Focus](emptyBody).version, 0L)
+    val deadline = System.nanoTime() + 30.seconds.toNanos
+    val stream   = DeviceStream("http-focus", "/focus/stream")
+    assertEquals(stream.status, 200)
+    val (status, body) = send(
+      "PUT",
+      "/surfaces/http-focus/focus",
+      Some("""{"device":"phone-1","fields":{"card":"m1"}}""")
+    )
+    assertEquals(status, 200, body)
+    assertEquals(readFromString[Focus](body).fields, Map("card" -> "m1"))
+    var seen = Option.empty[String]
+    while seen.isEmpty && System.nanoTime() < deadline do
+      val (name, data) = stream.next()
+      if name == "row" && data.contains("\"card\":\"m1\"") then seen = Some(data)
+    assert(seen.isDefined, "the focus was not streamed")
+    stream.close()
+    val (bad, badBody) = send(
+      "PUT",
+      "/surfaces/http-focus/focus",
+      Some("""{"device":"phone-1","fields":{"colour":"red"}}""")
+    )
+    assertEquals(bad, 400, badBody)
   }

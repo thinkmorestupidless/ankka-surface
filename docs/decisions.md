@@ -43,3 +43,31 @@ addition behind the same device API.
 - Authentication of the owner is the consumer's, through the endpoint's ACL; the library holds the
   owner's name and nothing else about them.
 - A second person steering one surface is not designed. One person, many devices.
+
+## 0002 — Focus is a second lane, and words are heard before they are said (2026-11-13)
+
+**Context.** Trading Pit's first measurements put the spoken path's time in the recogniser's wait
+for silence and in the device's draw after the answer. And a device in a room had no way to follow
+where the attention was on the device steering it, short of a move per finger movement.
+
+**Decision.**
+1. Focus is a key value entity beside the surface, not a part of it. It keeps its latest value and
+   no history, so a thumb crossing a shelf costs one row write per throttle window and the journal
+   nothing. ankka delivers a key value entity's latest state and may skip intermediates, which is
+   the semantics focus wants. Its keys are the vocabulary's, as the surface's words are.
+2. A device hears before it says. `/hear` is the interpreter alone, nothing persisted, so partial
+   words and uncertain alternatives can be tried; a `say` carries the utterance they came from, and
+   the rail keeps one entry per utterance.
+3. The newest say wins on the device. Nothing blocks the prompt; an older answer arriving later is
+   returned and not held.
+4. The package exports the types of an ear and ships none: recognisers are the browser's or the
+   consumer's.
+
+**Alternatives.** Focus as a modifier on the surface: lost, a version per finger movement. A
+non-durable broadcast beside ankka: lost, there is none in the platform and the key value entity
+is cheap enough. Partials applied only locally: kept as an option a consumer may take with `/hear`,
+but the room device then does not follow, and following is the point.
+
+**Consequences.** Two more components in a consumer that wants the lane, registered beside the
+surface's two. The device's stream count doubles. A consumer's interpreter should be prefix-safe
+if it hears partials: each prefix a step towards the whole.

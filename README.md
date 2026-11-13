@@ -35,6 +35,9 @@ val vocabulary = Vocabulary(
 
 object Surfaces    extends SurfaceCompanion(ComponentId("surface"), vocabulary)
 object SurfaceRows extends SurfaceRowsCompanion(ComponentId("surface-rows"), Surfaces)
+// Optional: the focus lane, where the attention is beside what was asked for.
+object Focuses     extends SurfaceFocusCompanion(ComponentId("surface-focus"), vocabulary)
+object FocusRows   extends SurfaceFocusRowsCompanion(ComponentId("surface-focus-rows"), Focuses)
 
 object Interpreter extends com.thinkmorestupidless.ankka.surface.Interpreter:
   def interpret(surface: Surface, text: String): Interpretation = ...
@@ -42,17 +45,23 @@ object Interpreter extends com.thinkmorestupidless.ankka.surface.Interpreter:
 Ankka.service
   .register(Surfaces.descriptor)
   .register(SurfaceRows.descriptor)
+  .register(Focuses.descriptor)
+  .register(FocusRows.descriptor)
   .withExtension(ProjectionRuntime())
   .withExtension(HttpServer.of(clients =>
     SurfaceEndpoint("/surfaces", Acl.AllowAll, clients.componentClient, clients.viewClient,
-      Surfaces, SurfaceRows, Interpreter)
+      Surfaces, SurfaceRows, Interpreter, focus = Some(FocusLane(Focuses, FocusRows)))
   ))
   .start()
 ```
 
 The endpoint serves `GET /surfaces/{id}`, streams `GET /surfaces/{id}/stream` as server-sent
-events, and takes `open`, `moves`, `say`, `show`, `hide` and a `DELETE`; the contract lists every
-route, body and refusal. The interpreter is a seam: from the surface as it stands and the words a
+events, and takes `open`, `moves`, `say`, `hear`, `show`, `hide` and a `DELETE`; with the focus
+lane, `GET`, `PUT` and a stream of `/surfaces/{id}/focus`. The contract lists every route, body
+and refusal. `hear` is the interpreter alone, nothing persisted, for words a device is not sure
+of or has not finished hearing; a `say` names the utterance its words came from, and the rail
+keeps one entry per utterance. Focus is where the attention is, beside the surface: a key value
+entity, the latest value only, for a room device to follow a thumb. The interpreter is a seam: from the surface as it stands and the words a
 person said, a move, or a reason there is none. It never acts past the surface: an act it hears
 becomes `pending`, and committing it is the consumer's own route.
 

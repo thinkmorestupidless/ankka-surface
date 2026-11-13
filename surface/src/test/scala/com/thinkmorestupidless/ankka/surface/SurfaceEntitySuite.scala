@@ -202,3 +202,25 @@ class SurfaceEntitySuite extends munit.FunSuite:
       kit.allEvents.foldLeft(Surface.empty("s-1"))(_.applyEvent(_, vocabulary.railLength))
     assertEquals(folded, kit.currentState)
   }
+
+  test("the moves of one utterance share one rail entry; a new utterance pushes") {
+    val kit = opened()
+    def say(text: String, utterance: String, n: Int) =
+      kit.call(Surfaces.move)(
+        Move(shape = Some("shelf"), request = Some(text), at = t(n), utterance = Some(utterance))
+      ): Unit
+    say("new", "u-1", 1)
+    say("newcastle", "u-1", 2)
+    say("newcastle this", "u-1", 3)
+    say("why", "u-2", 4)
+    assertEquals(kit.currentState.rail.map(_.text), List("why", "newcastle this"))
+    assertEquals(kit.currentState.rail.map(_.utterance), List(Some("u-2"), Some("u-1")))
+    assertEquals(kit.currentState.version, 5L)
+  }
+
+  test("a request with no utterance never replaces the entry before it") {
+    val kit = opened()
+    kit.call(Surfaces.move)(Move(shape = Some("shelf"), request = Some("one"), at = t(1))): Unit
+    kit.call(Surfaces.move)(Move(shape = Some("item"), request = Some("two"), at = t(2))): Unit
+    assertEquals(kit.currentState.rail.map(_.text), List("two", "one"))
+  }

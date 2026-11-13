@@ -1,6 +1,6 @@
 import { applyMove } from "./fold.ts";
 import { eventData } from "./sse.ts";
-import type { Hide, Move, Open, Said, Say, Show, Surface } from "./types.ts";
+import type { Focus, Heard, Hide, Move, Open, Said, Say, SetFocus, Show, Surface } from "./types.ts";
 
 /** A refusal from the server: any answer that is not 2xx. */
 export class SurfaceError extends Error {
@@ -19,6 +19,8 @@ export class SurfaceError extends Error {
 export type Source = "fetch" | "local" | "answer" | "stream" | "removed";
 
 export type Listener = (surface: Surface | null, source: Source) => void;
+
+export type FocusListener = (focus: Focus, source: Source) => void;
 
 export type SurfaceModelOptions = {
   /** The prefix the consumer mounted the endpoint under, e.g. `/api/surfaces`. */
@@ -40,6 +42,10 @@ export type SurfaceModelOptions = {
   reconnectDelayMs?: number;
   /** The clock for rail entries made locally. */
   now?: () => string;
+  /** Open the focus lane beside the surface: stream it and let this device set it. Off by default. */
+  focus?: boolean;
+  /** How often at most this device sends its focus; the last value in a window always goes. */
+  focusIntervalMs?: number;
 };
 
 /**
@@ -58,8 +64,19 @@ export class SurfaceModel {
   readonly #reconnectDelayMs: number;
   readonly #now: () => string;
 
+  readonly #withFocus: boolean;
+  readonly #focusIntervalMs: number;
+
   #surface: Surface | null = null;
   #stream: EventSource | null = null;
+  // The latest-wins sequence for `say`: an answer to an older say than the newest sent is not held.
+  #saySequence = 0;
+  #focus: Focus | null = null;
+  #focusStream: EventSource | null = null;
+  #focusListeners = new Set<FocusListener>();
+  #focusPending: { [key: string]: string } | null = null;
+  #focusTimer: ReturnType<typeof setTimeout> | null = null;
+  #focusInFlight = false;
   // Set by an `error` event so the next `open` re-fetches, in case a change was missed.
   #erred = false;
   #listeners = new Set<Listener>();
@@ -76,6 +93,8 @@ export class SurfaceModel {
     this.#EventSource = options.EventSource ?? globalThis.EventSource;
     this.#reconnectDelayMs = options.reconnectDelayMs ?? 1000;
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#withFocus = options.focus ?? false;
+    this.#focusIntervalMs = options.focusIntervalMs ?? 120;
   }
 
   /** The surface held, or null when there is none (never opened, or closed). */
@@ -96,6 +115,19 @@ export class SurfaceModel {
     };
   }
 
+  /** The focus beside the surface, or null when the lane is off or nothing has been read yet. */
+  get focused(): Focus | null {
+    return this.#focus;
+  }
+
+  /** Hears every change to the focus. Returns the way to stop hearing. */
+  subscribeFocus(listener: FocusListener): () => void {
+    this.#focusListeners.add(listener);
+    return () => {
+      this.#focusListeners.delete(listener);
+    };
+  }
+
   /**
    * Fetches the surface, opens the stream, and shows this device on the surface. A surface never
    * opened (404) leaves `surface` null and opens nothing: `open` it first.
@@ -105,6 +137,7 @@ export class SurfaceModel {
     if (!found) return;
     this.#openStream();
     await this.show();
+    if (this.#withFocus) await this.#openFocus();
   }
 
   /** Hides this device from the surface (a failure is ignored) and closes the stream. */
@@ -115,6 +148,7 @@ export class SurfaceModel {
       // The surface may be gone or the server unreachable; the device is leaving either way.
     }
     this.#closeStream();
+    this.#closeFocus();
   }
 
   /** Opens the surface with its owner and home shape, then streams and shows if not already. */
@@ -125,6 +159,7 @@ export class SurfaceModel {
     if (!this.connected) {
       this.#openStream();
       await this.show();
+      if (this.#withFocus) await this.#openFocus();
     }
     return surface;
   }
@@ -149,15 +184,103 @@ export class SurfaceModel {
 
   /**
    * Hands the text to the interpreter. Not applied locally: the device cannot know what the
-   * interpreter will make of it. Not understood, the surface comes back unchanged.
+   * interpreter will make of it. Not understood, the surface comes back unchanged. The newest say
+   * wins: the answer to an older one is returned but not held. `utterance` names the utterance the
+   * words belong to while it is still being heard, so its moves share one rail entry.
    */
-  async say(text: string): Promise<Said> {
-    const body: Say = { text };
+  async say(text: string, utterance?: string): Promise<Said> {
+    const body: Say = utterance === undefined ? { text } : { text, utterance };
+    const sequence = ++this.#saySequence;
     const said = await this.#post<Said>("say", body);
+    if (sequence !== this.#saySequence) return said;
     if (this.#surface === null || said.surface.version > this.#surface.version) {
       this.#set(said.surface, "answer");
     }
     return said;
+  }
+
+  /** The interpreter alone: what it would make of the words, with nothing persisted or held. */
+  async hear(text: string): Promise<Heard> {
+    const body: Say = { text };
+    return this.#post<Heard>("hear", body);
+  }
+
+  /**
+   * Sets where this device's attention is, throttled: at most one send per `focusIntervalMs`, and
+   * the last value in a window always goes. Applied locally at once. Empty fields clear it.
+   */
+  focus(fields: { [key: string]: string }): void {
+    if (!this.#withFocus) throw new Error("the focus lane is off: pass focus: true");
+    const local: Focus = {
+      id: this.#id,
+      device: this.#device,
+      fields: { ...fields },
+      at: this.#now(),
+      version: this.#focus?.version ?? 0,
+    };
+    this.#setFocus(local, "local");
+    this.#focusPending = { ...fields };
+    if (this.#focusTimer === null && !this.#focusInFlight) void this.#sendFocus();
+  }
+
+  async #sendFocus(): Promise<void> {
+    const fields = this.#focusPending;
+    this.#focusPending = null;
+    if (fields === null) return;
+    this.#focusInFlight = true;
+    try {
+      const body: SetFocus = { device: this.#device, fields };
+      const response = await this.#fetch(`${this.#baseUrl}/${this.#id}/focus`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (response.ok) this.#acceptFocus((await response.json()) as Focus, "answer");
+    } catch {
+      // The next value goes with the next window; focus is never worth a retry.
+    } finally {
+      this.#focusInFlight = false;
+      this.#focusTimer = setTimeout(() => {
+        this.#focusTimer = null;
+        if (this.#focusPending !== null) void this.#sendFocus();
+      }, this.#focusIntervalMs);
+    }
+  }
+
+  async #openFocus(): Promise<void> {
+    const response = await this.#fetch(`${this.#baseUrl}/${this.#id}/focus`, { method: "GET" });
+    if (response.ok) this.#acceptFocus((await response.json()) as Focus, "fetch");
+    this.#closeFocus();
+    const stream = new this.#EventSource(`${this.#baseUrl}/${this.#id}/focus/stream`);
+    this.#focusStream = stream;
+    stream.addEventListener("row", (event) => {
+      const { row } = eventData<{ key: string; row: Focus }>(event);
+      this.#acceptFocus(row, "stream");
+    });
+    stream.addEventListener("ended", () => {
+      this.#closeFocus();
+      setTimeout(() => {
+        if (this.connected) void this.#openFocus().catch(() => undefined);
+      }, this.#reconnectDelayMs);
+    });
+  }
+
+  #closeFocus(): void {
+    this.#focusStream?.close();
+    this.#focusStream = null;
+    if (this.#focusTimer !== null) clearTimeout(this.#focusTimer);
+    this.#focusTimer = null;
+    this.#focusPending = null;
+  }
+
+  #acceptFocus(focus: Focus, source: Source): void {
+    if (this.#focus !== null && focus.version <= this.#focus.version) return;
+    this.#setFocus(focus, source);
+  }
+
+  #setFocus(focus: Focus, source: Source): void {
+    this.#focus = focus;
+    for (const listener of this.#focusListeners) listener(focus, source);
   }
 
   /** Records this device as showing the surface. */
@@ -181,6 +304,7 @@ export class SurfaceModel {
     const response = await this.#fetch(`${this.#baseUrl}/${this.#id}`, { method: "DELETE" });
     if (!response.ok) throw new SurfaceError(response.status, await response.text(), "DELETE");
     this.#closeStream();
+    this.#closeFocus();
     this.#set(null, "removed");
   }
 

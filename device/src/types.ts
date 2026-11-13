@@ -15,6 +15,8 @@ export type RailEntry = {
   anchor: Anchor | null;
   modifiers: { [key: string]: string };
   at: string;
+  /** The utterance the request came from, when the device said; one entry per utterance. */
+  utterance?: string | null;
 };
 
 /** A device's record on the surface. */
@@ -46,9 +48,11 @@ export type Move = {
   pending?: Pending;
   clearPending?: boolean;
   request?: string;
+  /** Names the utterance a request came from, so its moves share one rail entry. */
+  utterance?: string;
 };
 
-export type Say = { text: string };
+export type Say = { text: string; utterance?: string };
 
 export type Show = { device: string; deviceClass: string; room?: boolean };
 
@@ -56,6 +60,29 @@ export type Hide = { device: string };
 
 /** The interpreter's answer to a `say`: not understood, nothing changed and `reason` says why. */
 export type Said = { understood: boolean; reason: string | null; surface: Surface };
+
+/** The interpreter's answer to a `hear`: the move it would make, with nothing persisted. */
+export type Heard = { understood: boolean; reason: string | null; move: Move | null };
+
+/**
+ * Where the attention is, beside the surface: the card under a thumb, the outcome a finger rests
+ * on. The latest value only; `fields` empty means nothing is focused.
+ */
+export type Focus = { id: string; device: string; fields: { [key: string]: string }; at: string; version: number };
+
+export type SetFocus = { device: string; fields: { [key: string]: string } };
+
+/** What an ear emits: words as they are heard, the final words, or the end of listening. */
+export type Hearing =
+  | { kind: "partial"; text: string }
+  | { kind: "final"; text: string; alternatives: string[] }
+  | { kind: "end" };
+
+/**
+ * The listening seam. The package ships no ear: a consumer wraps the browser's recogniser, or a
+ * streaming one, and emits hearings; a device hands partials to `hear` or `say` with an utterance.
+ */
+export type Ear = { start(): void; stop(): void; abort(): void };
 
 /**
  * How a device renders, named by the vocabulary. "phone", "laptop" and "tv" are the usual
