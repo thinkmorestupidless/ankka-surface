@@ -20,10 +20,22 @@ final case class MoveBody(
     clearModifiers: List[String] = Nil,
     pending: Option[Pending] = None,
     clearPending: Boolean = false,
-    request: Option[String] = None
+    request: Option[String] = None,
+    utterance: Option[String] = None
 ):
   def toMove(at: java.time.Instant): Move =
-    Move(shape, anchor, clearAnchor, modifiers, clearModifiers, pending, clearPending, request, at)
+    Move(
+      shape,
+      anchor,
+      clearAnchor,
+      modifiers,
+      clearModifiers,
+      pending,
+      clearPending,
+      request,
+      at,
+      utterance
+    )
 
 /**
  * Words said or typed; `utterance` names the utterance they belong to while it is still being
