@@ -290,6 +290,26 @@ class SurfaceHttpSuite extends munit.FunSuite with LogCapturing:
     )
   }
 
+  test("a move under the utterance a say named replaces its rail entry") {
+    val _ = open("http-utterance-move")
+    val (said, saidBody) = send(
+      "POST",
+      "/surfaces/http-utterance-move/say",
+      Some("""{"text":"newcastle","utterance":"u-1"}""")
+    )
+    assertEquals(said, 200, saidBody)
+    val (status, body) =
+      move(
+        "http-utterance-move",
+        """{"clearModifiers":["time"],"request":"newcastle","utterance":"u-1"}"""
+      )
+    assertEquals(status, 200, body)
+    assertEquals(
+      readFromString[Surface](body).rail.map(e => (e.text, e.utterance)),
+      List(("newcastle", Some("u-1")))
+    )
+  }
+
   test(
     "the focus beside a surface is set, read and streamed, and refused for a surface nobody opened"
   ) {
